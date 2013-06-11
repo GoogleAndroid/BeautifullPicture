@@ -66,7 +66,7 @@ public class MainActivity extends Activity implements GestureDetector.OnGestureL
 		try {
 			downloadContent("http://192.168.2.104:8080/pic/content.json");
 		} catch (Exception e) {
-			// TODO: handle exception
+			// TODO: handle exception, show error message or load local resource.
 			e.printStackTrace();
 			
 		}
@@ -74,10 +74,18 @@ public class MainActivity extends Activity implements GestureDetector.OnGestureL
 	}
 	
 	private void showNext() {
+		if (picturesUrls.size() == 0) {
+			// TODO: need decide how to handle this condition
+			return;
+		}
 		downloadPicture(picturesUrls.get(index));
 		index = (index + 1) % picturesUrls.size();
 	}
 	private void showPre() {
+		if(picturesUrls.size() == 0) {
+			// TODO: need decide how to handle this condition
+			return;
+		}
 		if(index == 0) {
 			index = picturesUrls.size() - 1;
 		} else {
