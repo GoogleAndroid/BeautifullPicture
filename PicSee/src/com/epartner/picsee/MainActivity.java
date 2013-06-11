@@ -35,7 +35,8 @@ import android.widget.ImageView;
 
 public class MainActivity extends Activity implements GestureDetector.OnGestureListener{
 
-	private static final String DEBUG_TAG = "Gestures";
+	private static final String DEBUG_TAG = "MainActivity DEBUG";
+	private static final String ERROR_TAG = "MainActivity ERROR";
 	
 	private GestureDetectorCompat gestureDetector;
 	
@@ -47,13 +48,24 @@ public class MainActivity extends Activity implements GestureDetector.OnGestureL
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
 		
-		//getActionBar().hide();
+		getActionBar().hide();
 		
 		gestureDetector = new GestureDetectorCompat(this, this);
 		
-		getPicUrls();
-		
-		showNext();
+		new Thread(new Runnable() {
+			
+			@Override
+			public void run() {
+				
+				getPicUrls();
+				
+				runOnUiThread(new Runnable() {
+					public void run() {
+						showNextPic();
+					}
+				});
+			}
+		}).start();
 	}
 	
 	@Override 
@@ -62,36 +74,53 @@ public class MainActivity extends Activity implements GestureDetector.OnGestureL
 		return gestureDetector.onTouchEvent(event);
 	}
 	
-	private void getPicUrls() {
+	// synchronized use to ensure the data updated in this method is visibility in other thread.
+	private synchronized void getPicUrls() { 
+		ArrayList<String> urls = null;
 		try {
-			downloadContent("http://192.168.2.104:8080/pic/content.json");
+			urls = downloadContent("http://192.168.2.104:8080/pic/content.json");
 		} catch (Exception e) {
-			// TODO: handle exception, show error message or load local resource.
 			e.printStackTrace();
-			
+			Log.d(ERROR_TAG, "down load content failed, caused by:" + e);
 		}
+		if (urls == null || urls.size() == 0) {
+			// TODO: load local resource
+			urls = new ArrayList<String>();
+		} 
+		picturesUrls = urls;
+		index = -1;	
+	}
+	
+	private synchronized String getNextUrl() {
+		index = (index + 1) % picturesUrls.size();
+		String result = picturesUrls.get(index);
+		return result;
+	}
+	
+	private synchronized String getPreviousUrl() {
+		if ( index == 0 ) {
+			index = picturesUrls.size() - 1;
+		} else {
+			index--;
+		}
+		return picturesUrls.get(index);
 		
 	}
 	
-	private void showNext() {
+	private void showNextPic() {
 		if (picturesUrls.size() == 0) {
-			// TODO: need decide how to handle this condition
+			Log.d(ERROR_TAG, "no pic is loaded.");
+			//
 			return;
 		}
-		downloadPicture(picturesUrls.get(index));
-		index = (index + 1) % picturesUrls.size();
+		downloadPicture(getNextUrl());
 	}
 	private void showPre() {
 		if(picturesUrls.size() == 0) {
 			// TODO: need decide how to handle this condition
 			return;
 		}
-		if(index == 0) {
-			index = picturesUrls.size() - 1;
-		} else {
-			index--;
-		}
-		downloadPicture(picturesUrls.get(index));
+		downloadPicture(getPreviousUrl());
 		
 	}
 	
@@ -105,10 +134,10 @@ public class MainActivity extends Activity implements GestureDetector.OnGestureL
 			public void run() {
 				try {
 					final Bitmap downloadBitmap = downloadBitmap(url);
-					final ImageView imageView = (ImageView) findViewById(R.id.image);
 					runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
+                        	ImageView imageView = (ImageView) findViewById(R.id.image);
                             imageView.setImageBitmap(downloadBitmap);
                         }
                     });
@@ -138,39 +167,41 @@ public class MainActivity extends Activity implements GestureDetector.OnGestureL
 	private ArrayList<String> downloadContent(String url) throws IOException, JSONException {
 		
 		HttpResponse response = download(url);
-		
         StatusLine statusLine = response.getStatusLine();
         int statusCode = statusLine.getStatusCode();
-        if (statusCode == 200) {
-            HttpEntity entity = response.getEntity();
-            InputStream input = entity.getContent();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(input));
-            String line;
-            StringBuilder builder = new StringBuilder();
-            while ( (line = reader.readLine()) != null ) {
-            	builder.append(line);
-            }
-            Log.d(DEBUG_TAG, builder.toString());
-            JSONObject jsonObject = new JSONObject(builder.toString());
-            Log.d(DEBUG_TAG, "category = " + jsonObject.getString("category"));
-            Log.d(DEBUG_TAG, "domain = " + jsonObject.getString("domain"));
-            Log.d(DEBUG_TAG, "class of pictures = " + jsonObject.get("pictures").getClass());
-            String domain = jsonObject.getString("domain");
-            
-            JSONArray pics = jsonObject.getJSONArray("pictures");
-            for(int i = 0; i < pics.length(); i++) {
-            	JSONObject o = pics.getJSONObject(i);
-            	picturesUrls.add(domain + o.getString("path")); 
-            }
-            index = 0;
-            
-            
-        } else {
-            throw new IOException("Download failed, HTTP response code "
+        
+        if( statusCode != 200) {
+        	Log.d(DEBUG_TAG, "get content json failed. status code is " + statusCode);
+            throw new IOException("Download content json failed, HTTP response code "
                     + statusCode + " - " + statusLine.getReasonPhrase());
         }
+        ArrayList<String> resultList = new ArrayList<String>();
+        
+        String cotent = getContent(response);
+        
+        JSONObject jsonObject = new JSONObject(cotent);
+        
+        String domain = jsonObject.getString("domain");
+        JSONArray pics = jsonObject.getJSONArray("pictures");
+        for(int i = 0; i < pics.length(); i++) {
+        	JSONObject o = pics.getJSONObject(i);
+        	resultList.add(domain + o.getString("path")); 
+        }
 		
-		return null;
+		return resultList;
+	}
+
+	private String getContent(HttpResponse response) throws IOException {
+		HttpEntity entity = response.getEntity();
+        InputStream input = entity.getContent();
+        BufferedReader reader = new BufferedReader(new InputStreamReader(input));
+        String line;
+        StringBuilder builder = new StringBuilder();
+        while ( (line = reader.readLine()) != null ) {
+        	builder.append(line);
+        }
+        Log.d(DEBUG_TAG, builder.toString());
+		return builder.toString();
 	}
 	
 	private Bitmap downloadBitmap(String url) throws IOException {
@@ -237,7 +268,7 @@ public class MainActivity extends Activity implements GestureDetector.OnGestureL
 		float distance = e1.getX() - e2.getX();
 		Log.d(DEBUG_TAG, "fling distance is " + distance );
 		if( distance > 50 ) {
-			showNext();
+			showNextPic();
 		} else if (distance < -50 ) {
 			showPre();
 		}

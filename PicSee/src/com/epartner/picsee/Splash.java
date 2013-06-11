@@ -25,30 +25,34 @@ public class Splash extends Activity {
 		
 		setContentView(R.layout.splash);
 		
+		ImageView splash = (ImageView) findViewById(R.id.splash);			
+		Random r = new Random(new Date().getTime());
+		int index = r.nextInt(splashImages.length);				
+		splash.setImageResource(splashImages[index]);
+		
 		//load daily update pictures
 		new Thread(new Runnable() {
 			
 			@Override
 			public void run() {
 								
-				ImageView splash = (ImageView) findViewById(R.id.splash);			
-				Random r = new Random(new Date().getTime());
-				int index = r.nextInt(splashImages.length);				
-				splash.setImageResource(splashImages[index]);
 				
 				long start = new Date().getTime();
 				
 				long now = new Date().getTime();
-				
 				long needWait = WAITING_TIME - (now - start);
-				
 				try {
 					Thread.sleep(needWait);
-				} catch (InterruptedException e) {
-					// show Error message on Screen
-				} 
-				Intent intent = new Intent(Splash.this, MainActivity.class);
-				startActivity(intent);
+				} catch (InterruptedException ignore) {} 
+				
+				runOnUiThread(new Runnable() {
+					
+					@Override
+					public void run() {
+						Intent intent = new Intent(Splash.this, MainActivity.class);
+						startActivity(intent);	
+					}
+				});
 			}
 		}).start();
 	}
